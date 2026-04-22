@@ -1,0 +1,14 @@
+{
+  "name": "voicetant",
+  "version": "1.0.0",
+  "description": "Voicetant - floating popup desktop assistant built with Electron",
+  "main": "main.js",
+  "author": "Your Name",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^31.0.2"
+  }
+}
