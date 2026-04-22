@@ -10,5 +10,8 @@
   },
   "devDependencies": {
     "electron": "^31.0.2"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2"
   }
 }
