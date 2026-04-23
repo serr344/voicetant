@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Voicetant Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./settings.css" />
+</head>
+<body>
+  <div class="titlebar">
+    <span class="titlebar-title">⚙ SETTINGS</span>
+    <button class="close-btn" id="closeBtn">✕</button>
+  </div>
+
+  <div class="content">
+
+    <!-- ── API KEYS ── -->
+    <section>
+      <div class="section-label">API KEYS</div>
+
+      <div class="field">
+        <label>Service</label>
+        <select id="apiService">
+          <option value="groq">Groq (free — STT + LLM)</option>
+          <option value="openai">OpenAI (paid — STT + LLM)</option>
+        </select>
+        <span class="hint" id="apiHint">
+          Get your free key at <b>console.groq.com</b>
+        </span>
+      </div>
+
+      <div class="field" id="groqKeyField">
+        <label>Groq API Key</label>
+        <div class="input-row">
+          <input type="password" id="groqKey" placeholder="gsk_..." spellcheck="false" />
+          <button class="toggle-btn" data-target="groqKey">SHOW</button>
+        </div>
+      </div>
+
+      <div class="field hidden" id="openaiKeyField">
+        <label>OpenAI API Key</label>
+        <div class="input-row">
+          <input type="password" id="openaiKey" placeholder="sk-..." spellcheck="false" />
+          <button class="toggle-btn" data-target="openaiKey">SHOW</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── LLM ── -->
+    <section>
+      <div class="section-label">LLM</div>
+
+      <div class="field">
+        <label>Model</label>
+        <select id="llmModel">
+          <!-- Groq models (shown when groq selected) -->
+          <optgroup label="Groq Models" class="groq-opts">
+            <option value="llama-3.3-70b-versatile">Llama 3.3 70B — best quality</option>
+            <option value="llama-3.1-8b-instant">Llama 3.1 8B — fastest</option>
+            <option value="llama3-groq-70b-8192-tool-use-preview">Llama 3 70B Tool Use</option>
+            <option value="gemma2-9b-it">Gemma 2 9B</option>
+          </optgroup>
+          <!-- OpenAI models (shown when openai selected) -->
+          <optgroup label="OpenAI Models" class="openai-opts hidden">
+            <option value="gpt-4o-mini">GPT-4o Mini — best value</option>
+            <option value="gpt-4o">GPT-4o — best quality</option>
+            <option value="gpt-3.5-turbo">GPT-3.5 Turbo — fastest</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>
+          System Prompt
+          <span class="label-hint">— defines the assistant's personality & behavior</span>
+        </label>
+        <textarea id="systemPrompt" rows="5" spellcheck="false"
+          placeholder="e.g. You are a concise assistant. Always reply in English. Keep answers under 3 sentences."></textarea>
+      </div>
+    </section>
+
+    <!-- ── TTS ── -->
+    <section>
+      <div class="section-label">VOICE / TTS</div>
+      <div class="field">
+        <label>Speed — <span id="rateVal">1.0</span>x</label>
+        <input type="range" id="ttsRate" min="0.5" max="2.0" step="0.1" value="1.0" />
+        <span class="hint">0.5x = slow &nbsp;·&nbsp; 1.0x = normal &nbsp;·&nbsp; 2.0x = fast</span>
+      </div>
+    </section>
+
+    <!-- ── APP ── -->
+    <section>
+      <div class="section-label">APPLICATION</div>
+      <div class="field toggle-field">
+        <label>Launch at startup</label>
+        <label class="switch">
+          <input type="checkbox" id="launchAtStartup" />
+          <span class="slider"></span>
+        </label>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="footer">
+    <button class="btn-secondary" id="cancelBtn">CANCEL</button>
+    <button class="btn-primary" id="saveBtn">SAVE</button>
+  </div>
+
+  <script src="./settings-renderer.js"></script>
+</body>
+</html>

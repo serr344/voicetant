@@ -1,7 +1,8 @@
-// renderer.js — microphone + Whisper STT + LLM + TTS
+// renderer.js — microphone + Whisper STT + LLM + TTS + Settings
 
-const listenBtn = document.querySelector('.listen-btn');
-const statusDot = document.querySelector('.status-dot');
+const listenBtn   = document.querySelector('.listen-btn');
+const statusDot   = document.querySelector('.status-dot');
+const settingsBtn = document.querySelector('.settings-btn');
 
 let mediaRecorder = null;
 let audioChunks   = [];
@@ -10,17 +11,28 @@ let isRecording   = false;
 let savedMimeType = '';
 let isSpeaking    = false;
 
-// Conversation history — keeps context across turns
-const conversationHistory = [
-  {
-    role: 'system',
-    content:
-      'You are Voicetant, a fast and concise voice assistant. ' +
-      'ALWAYS respond in English, regardless of the language the user speaks. ' +
-      'Keep your answers short and clear — 1 to 3 sentences max. ' +
-      'No markdown, no bullet points, just plain spoken text.',
-  },
-];
+// ── Conversation history ─────────────────────────────────────────
+let systemPrompt =
+  'You are Voicetant, a fast and concise voice assistant. ' +
+  'Always respond in English. Keep answers under 3 sentences. ' +
+  'No markdown, no bullet points — plain spoken text only.';
+
+function buildHistory() {
+  return [{ role: 'system', content: systemPrompt }];
+}
+
+let conversationHistory = buildHistory();
+
+// ── Apply settings ───────────────────────────────────────────────
+async function applySettings(s) {
+  if (s && s.systemPrompt) {
+    systemPrompt = s.systemPrompt;
+    conversationHistory = buildHistory();
+  }
+}
+
+window.voicetant.getSettings().then(applySettings);
+window.voicetant.onSettingsUpdated(applySettings);
 
 // ── State machine ────────────────────────────────────────────────
 const STATE = {
@@ -67,7 +79,7 @@ const STATE = {
     listenBtn.style.borderColor = '#ffb347';
     listenBtn.style.color       = '#ffb347';
     listenBtn.style.boxShadow   = '0 0 6px rgba(255,179,71,0.2)';
-    listenBtn.disabled          = false; // allow skip
+    listenBtn.disabled          = false;
   },
   error: (msg = 'ERROR') => {
     statusDot.style.background  = '#ff4d6d';
@@ -81,7 +93,7 @@ const STATE = {
   },
 };
 
-// ── TTS — via PowerShell Windows SAPI (guaranteed en-US) ────────
+// ── TTS ──────────────────────────────────────────────────────────
 function speak(text) {
   return new Promise((resolve) => {
     isSpeaking = true;
@@ -105,16 +117,11 @@ function stopSpeaking() {
   STATE.idle();
 }
 
-// ── Microphone access ────────────────────────────────────────────
+// ── Microphone ───────────────────────────────────────────────────
 async function getMicStream() {
   try {
     return await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        sampleRate: 16000,
-        echoCancellation: true,
-        noiseSuppression: true,
-      },
+      audio: { channelCount: 1, sampleRate: 16000, echoCancellation: true, noiseSuppression: true },
       video: false,
     });
   } catch (err) {
@@ -129,17 +136,12 @@ async function startRecording() {
   if (!stream) { STATE.error('NO MIC'); return; }
 
   audioChunks = [];
-
   const mimeType = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', '']
     .find(t => t === '' || MediaRecorder.isTypeSupported(t));
 
   mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
   savedMimeType = mediaRecorder.mimeType;
-
-  mediaRecorder.ondataavailable = (e) => {
-    if (e.data?.size > 0) audioChunks.push(e.data);
-  };
-
+  mediaRecorder.ondataavailable = (e) => { if (e.data?.size > 0) audioChunks.push(e.data); };
   mediaRecorder.onstop = handleStop;
   mediaRecorder.start(250);
   isRecording = true;
@@ -156,59 +158,47 @@ function stopRecording() {
   isRecording = false;
 }
 
-// ── Recording done → STT → LLM → TTS ────────────────────────────
+// ── Pipeline: STT → LLM → TTS ────────────────────────────────────
 async function handleStop() {
-  if (audioChunks.length === 0) {
-    console.warn('[renderer] Audio data is empty.');
-    STATE.idle();
-    return;
-  }
+  if (audioChunks.length === 0) { STATE.idle(); return; }
 
   const blob     = new Blob(audioChunks, { type: savedMimeType || 'audio/webm' });
   const arrayBuf = await blob.arrayBuffer();
   console.log(`[renderer] Recording size: ${(arrayBuf.byteLength / 1024).toFixed(1)} KB`);
 
-  // 1) Save to temp file
+  // 1) Save
   const filePath = await window.voicetant.saveAudio(arrayBuf);
   if (!filePath) { STATE.error('SAVE ERR'); return; }
 
-  // 2) Transcribe with Whisper
+  // 2) STT
   const sttResult = await window.voicetant.transcribeAudio(filePath);
   if (sttResult.error) { STATE.error('STT ERR'); return; }
-
   const transcript = sttResult.transcript;
   console.log('[renderer] Transcript:', transcript);
+  if (!transcript) { STATE.idle(); return; }
 
-  if (!transcript) {
-    console.warn('[renderer] Empty transcript, skipping LLM.');
-    STATE.idle();
-    return;
-  }
-
-  // 3) Send to LLM
+  // 3) LLM
   STATE.thinking();
   conversationHistory.push({ role: 'user', content: transcript });
-
   const llmResult = await window.voicetant.askLlm({ messages: conversationHistory });
   if (llmResult.error) { STATE.error('LLM ERR'); return; }
-
   const reply = llmResult.reply;
   conversationHistory.push({ role: 'assistant', content: reply });
   console.log('[renderer] LLM reply:', reply);
 
-  // 4) Speak the reply
+  // 4) TTS
   await speak(reply);
 }
 
-// ── Button ───────────────────────────────────────────────────────
+// ── Buttons ──────────────────────────────────────────────────────
 listenBtn.addEventListener('click', () => {
-  if (isSpeaking) {
-    // Skip / stop TTS
-    stopSpeaking();
-    return;
-  }
-  if (isRecording) stopRecording();
-  else             startRecording();
+  if (isSpeaking)  { stopSpeaking(); return; }
+  if (isRecording) { stopRecording(); return; }
+  startRecording();
+});
+
+settingsBtn.addEventListener('click', () => {
+  window.voicetant.openSettings();
 });
 
 STATE.idle();

@@ -1,216 +1,277 @@
 const { app, BrowserWindow, screen, ipcMain } = require('electron');
-const path = require('path');
-const fs   = require('fs');
-const os   = require('os');
+const path      = require('path');
+const fs        = require('fs');
+const os        = require('os');
+const { spawn } = require('child_process');
 
+// ── Settings store ───────────────────────────────────────────────
+const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
+
+const DEFAULT_SETTINGS = {
+  apiService:      'groq',
+  groqKey:         '',
+  openaiKey:       '',
+  llmModel:        'llama-3.3-70b-versatile',
+  systemPrompt:    'You are Voicetant, a fast and concise voice assistant. Always respond in English. Keep answers under 3 sentences. No markdown, no bullet points — plain spoken text only.',
+  ttsRate:         1.0,
+  launchAtStartup: false,
+};
+
+function loadSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_PATH)) {
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')) };
+    }
+  } catch (e) { console.error('[main] Failed to load settings:', e.message); }
+  return { ...DEFAULT_SETTINGS };
+}
+
+function saveSettingsToDisk(s) {
+  try { fs.writeFileSync(SETTINGS_PATH, JSON.stringify(s, null, 2), 'utf8'); }
+  catch (e) { console.error('[main] Failed to save settings:', e.message); }
+}
+
+let settings = loadSettings();
+
+// .env fallback for keys
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-let mainWindow;
+function getApiKey() {
+  if (settings.apiService === 'openai') {
+    return settings.openaiKey || process.env.OPENAI_API_KEY || '';
+  }
+  return settings.groqKey || process.env.GROQ_API_KEY || '';
+}
 
-function createWindow() {
-  const windowWidth  = 330;
-  const windowHeight = 44;
+function getBaseUrl() {
+  return settings.apiService === 'openai'
+    ? 'https://api.openai.com/v1'
+    : 'https://api.groq.com/openai/v1';
+}
 
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, x, y } = primaryDisplay.workArea;
+// ── Windows ──────────────────────────────────────────────────────
+let mainWindow     = null;
+let settingsWindow = null;
 
-  const posX = Math.round(x + (width - windowWidth) / 2);
-  const posY = Math.round(y + 8);
+function createMainWindow() {
+  const W = 330, H = 44;
+  const { width, x, y } = screen.getPrimaryDisplay().workArea;
 
   mainWindow = new BrowserWindow({
-    width: windowWidth,
-    height: windowHeight,
-    x: posX,
-    y: posY,
-    resizable: false,
-    movable: true,
-    minimizable: false,
-    maximizable: false,
-    closable: true,
-    frame: false,
-    transparent: true,
-    hasShadow: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    fullscreenable: false,
+    width: W, height: H,
+    x: Math.round(x + (width - W) / 2),
+    y: Math.round(y + 8),
+    resizable: false, movable: true,
+    minimizable: false, maximizable: false, closable: true,
+    frame: false, transparent: true, hasShadow: false,
+    alwaysOnTop: true, skipTaskbar: true, fullscreenable: false,
     show: false,
     webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
+      contextIsolation: true, nodeIntegration: false,
       preload: path.join(__dirname, 'preload.js'),
-    }
+    },
   });
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
-
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-// ── IPC: save audio to temp file ────────────────────────────────
-ipcMain.handle('save-audio', async (_event, arrayBuffer) => {
-  const buffer    = Buffer.from(arrayBuffer);
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const fileName  = `voicetant-${timestamp}.webm`;
-  const savePath  = path.join(os.tmpdir(), fileName);
+function openSettingsWindow() {
+  if (settingsWindow) { settingsWindow.focus(); return; }
 
+  const { x: bx, y: by } = mainWindow.getBounds();
+
+  settingsWindow = new BrowserWindow({
+    width: 400, height: 580,
+    x: bx, y: by + 52,
+    resizable: false, movable: true,
+    minimizable: false, maximizable: false,
+    frame: false, transparent: false, hasShadow: true,
+    alwaysOnTop: true, skipTaskbar: true,
+    show: false,
+    webPreferences: {
+      contextIsolation: true, nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+
+  settingsWindow.loadFile(path.join(__dirname, 'src', 'settings.html'));
+  settingsWindow.once('ready-to-show', () => settingsWindow.show());
+  settingsWindow.on('closed', () => { settingsWindow = null; });
+}
+
+// ── IPC: Settings ────────────────────────────────────────────────
+ipcMain.handle('get-settings', () => ({ ...settings }));
+
+ipcMain.handle('save-settings', (_e, newSettings) => {
+  settings = { ...DEFAULT_SETTINGS, ...newSettings };
+  saveSettingsToDisk(settings);
+  if (app.isPackaged) {
+    app.setLoginItemSettings({ openAtLogin: settings.launchAtStartup });
+  }
+  if (mainWindow) mainWindow.webContents.send('settings-updated', settings);
+  console.log('[main] Settings saved. Service:', settings.apiService, '| Model:', settings.llmModel);
+  return { ok: true };
+});
+
+ipcMain.handle('open-settings',  () => openSettingsWindow());
+ipcMain.handle('close-settings', () => { if (settingsWindow) settingsWindow.close(); });
+
+// ── IPC: Save audio ──────────────────────────────────────────────
+ipcMain.handle('save-audio', async (_e, arrayBuffer) => {
+  const buffer   = Buffer.from(arrayBuffer);
+  const savePath = path.join(os.tmpdir(), `voicetant-${Date.now()}.webm`);
   fs.writeFileSync(savePath, buffer);
   console.log('[main] Audio saved:', savePath);
   return savePath;
 });
 
-// ── IPC: send to Groq Whisper API ───────────────────────────────
-ipcMain.handle('transcribe-audio', async (_event, filePath) => {
-  const apiKey = process.env.GROQ_API_KEY;
-
-  if (!apiKey) {
-    console.error('[main] GROQ_API_KEY not found. Check your .env file.');
-    return { error: 'Missing API key' };
-  }
-
-  if (!fs.existsSync(filePath)) {
-    console.error('[main] Audio file not found:', filePath);
-    return { error: 'File not found' };
-  }
+// ── IPC: Whisper STT ─────────────────────────────────────────────
+ipcMain.handle('transcribe-audio', async (_e, filePath) => {
+  const apiKey = getApiKey();
+  if (!apiKey)                   return { error: 'Missing API key — check Settings' };
+  if (!fs.existsSync(filePath))  return { error: 'Audio file not found' };
 
   try {
     const fileBuffer = fs.readFileSync(filePath);
     const fileName   = path.basename(filePath);
     const boundary   = `----VoicetantBoundary${Date.now()}`;
 
+    // Whisper model: groq uses whisper-large-v3-turbo, openai uses whisper-1
+    const whisperModel = settings.apiService === 'openai' ? 'whisper-1' : 'whisper-large-v3-turbo';
+
     const body = Buffer.concat([
       Buffer.from(
-        `--${boundary}\r\n` +
-        `Content-Disposition: form-data; name="model"\r\n\r\n` +
-        `whisper-large-v3-turbo\r\n` +
-        `--${boundary}\r\n` +
-        `Content-Disposition: form-data; name="language"\r\n\r\n` +
-        `en\r\n` +
-        `--${boundary}\r\n` +
-        `Content-Disposition: form-data; name="response_format"\r\n\r\n` +
-        `json\r\n` +
-        `--${boundary}\r\n` +
-        `Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n` +
-        `Content-Type: audio/webm\r\n\r\n`
+        `--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\n${whisperModel}\r\n` +
+        `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\nen\r\n` +
+        `--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\njson\r\n` +
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: audio/webm\r\n\r\n`
       ),
       fileBuffer,
       Buffer.from(`\r\n--${boundary}--\r\n`),
     ]);
 
-    console.log('[main] Sending to Groq Whisper API...');
+    console.log(`[main] STT → ${settings.apiService} [${whisperModel}]`);
 
-    const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    const res = await fetch(`${getBaseUrl()}/audio/transcriptions`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': `multipart/form-data; boundary=${boundary}`,
-      },
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': `multipart/form-data; boundary=${boundary}` },
       body,
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('[main] Groq Whisper error:', response.status, errText);
-      return { error: `API error: ${response.status}` };
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('[main] STT error:', res.status, err);
+      return { error: `STT error ${res.status}` };
     }
 
-    const data       = await response.json();
+    const data       = await res.json();
     const transcript = data.text?.trim() ?? '';
-
     console.log('[main] Transcript:', transcript);
     fs.unlink(filePath, () => {});
-
     return { transcript };
 
   } catch (err) {
-    console.error('[main] Whisper request failed:', err.message);
+    console.error('[main] STT failed:', err.message);
     return { error: err.message };
   }
 });
 
-// ── IPC: send transcript to Groq LLM ────────────────────────────
-ipcMain.handle('ask-llm', async (_event, { messages }) => {
-  const apiKey = process.env.GROQ_API_KEY;
-
-  if (!apiKey) {
-    console.error('[main] GROQ_API_KEY not found.');
-    return { error: 'Missing API key' };
-  }
+// ── IPC: LLM ────────────────────────────────────────────────────
+ipcMain.handle('ask-llm', async (_e, { messages }) => {
+  const apiKey = getApiKey();
+  if (!apiKey) return { error: 'Missing API key — check Settings' };
 
   try {
-    console.log('[main] Sending to Groq LLM...');
+    console.log(`[main] LLM → ${settings.apiService} [${settings.llmModel}]`);
 
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const res = await fetch(`${getBaseUrl()}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model:       settings.llmModel || 'llama-3.3-70b-versatile',
         messages,
-        max_tokens: 512,
+        max_tokens:  512,
         temperature: 0.7,
       }),
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('[main] Groq LLM error:', response.status, errText);
-      return { error: `LLM error: ${response.status}` };
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('[main] LLM error:', res.status, err);
+      return { error: `LLM error ${res.status}` };
     }
 
-    const data  = await response.json();
+    const data  = await res.json();
     const reply = data.choices?.[0]?.message?.content?.trim() ?? '';
-
     console.log('[main] LLM reply:', reply);
     return { reply };
 
   } catch (err) {
-    console.error('[main] LLM request failed:', err.message);
+    console.error('[main] LLM failed:', err.message);
     return { error: err.message };
   }
 });
 
 // ── IPC: TTS via PowerShell SAPI ────────────────────────────────
-const { exec, execSync } = require('child_process');
 let ttsProcess = null;
 
-ipcMain.handle('tts-speak', async (_event, text) => {
+function killTts() {
   if (ttsProcess) {
-    try { execSync('taskkill /F /IM powershell.exe /T'); } catch(_) {}
+    try { process.kill(ttsProcess.pid, 'SIGKILL'); } catch (_) {}
+    ttsProcess.removeAllListeners();
     ttsProcess = null;
   }
+}
 
-  const safe = text.replace(/'/g, "''");
-  const script = `Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.SelectVoiceByHints('en-US'); $s.Speak('${safe}')`;
-  const cmd = `powershell -NoProfile -Command "${script}"`;
+ipcMain.handle('tts-speak', async (_e, text) => {
+  killTts();
+
+  const rate   = settings.ttsRate ?? 1.0;
+  const sapiRate = Math.round((rate - 1.0) * 10); // -5 to +10
+  const safe   = text.replace(/'/g, "''");
+
+  const script = [
+    `Add-Type -AssemblyName System.Speech;`,
+    `$s = New-Object System.Speech.Synthesis.SpeechSynthesizer;`,
+    `$s.SelectVoiceByHints([System.Globalization.CultureInfo]'en-US');`,
+    `$s.Rate = ${sapiRate};`,
+    `$s.Speak('${safe}');`,
+  ].join(' ');
 
   return new Promise((resolve) => {
-    ttsProcess = exec(cmd, (err) => {
+    ttsProcess = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], {
+      detached: false, stdio: 'ignore',
+    });
+
+    console.log(`[main] TTS speaking [rate=${rate}x], PID:`, ttsProcess.pid);
+
+    ttsProcess.on('close', (code) => {
       ttsProcess = null;
-      if (err && err.killed) { resolve({ stopped: true }); return; }
-      if (err) console.error('[main] TTS error:', err.message);
+      console.log('[main] TTS done, code:', code);
       resolve({ done: true });
     });
-    console.log('[main] TTS speaking...');
+
+    ttsProcess.on('error', (err) => {
+      ttsProcess = null;
+      console.error('[main] TTS error:', err.message);
+      resolve({ error: err.message });
+    });
   });
 });
 
 ipcMain.handle('tts-stop', async () => {
-  if (ttsProcess) {
-    try { execSync('taskkill /F /IM powershell.exe /T'); } catch(_) {}
-    ttsProcess = null;
-    console.log('[main] TTS stopped.');
-  }
+  killTts();
+  console.log('[main] TTS stopped.');
   return { stopped: true };
 });
 
 // ── App lifecycle ────────────────────────────────────────────────
 app.whenReady().then(() => {
-  createWindow();
+  createMainWindow();
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
 });
 
