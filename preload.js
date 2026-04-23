@@ -18,6 +18,9 @@ contextBridge.exposeInMainWorld('voicetant', {
   openSettings:            ()         => ipcRenderer.invoke('open-settings'),
   closeSettings:           ()         => ipcRenderer.invoke('close-settings'),
   clearConversation:       ()         => ipcRenderer.invoke('clear-conversation'),
+  testApiKey:              (payload)  => ipcRenderer.invoke('test-api-key', payload),
+
   onSettingsUpdated:       (cb)       => ipcRenderer.on('settings-updated', (_e, s) => cb(s)),
   onConversationCleared:   (cb)       => ipcRenderer.on('conversation-cleared', () => cb()),
+  getAppEnvironment: () => ipcRenderer.invoke('get-app-environment'),
 });

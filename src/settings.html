@@ -16,37 +16,37 @@
 
   <div class="content">
 
-    <!-- ── API KEYS ── -->
-    <section>
-      <div class="section-label">API KEYS</div>
+<!-- ── API KEYS ── -->
+<section>
+  <div class="section-label">API KEYS</div>
 
-      <div class="field">
-        <label>Service</label>
-        <select id="apiService">
-          <option value="groq">Groq (free — STT + LLM)</option>
-          <option value="openai">OpenAI (paid — STT + LLM)</option>
-        </select>
-        <span class="hint" id="apiHint">
-          Get your free key at <b>console.groq.com</b>
-        </span>
-      </div>
+  <div class="field">
+    <label>Service</label>
+    <select id="apiService">
+      <option value="groq">Groq (free — STT + LLM)</option>
+      <option value="openai">OpenAI (paid — STT + LLM)</option>
+    </select>
+    <span class="hint" id="apiHint">
+      Get your free key at <b>console.groq.com</b>
+    </span>
+  </div>
 
-      <div class="field" id="groqKeyField">
-        <label>Groq API Key</label>
-        <div class="input-row">
-          <input type="password" id="groqKey" placeholder="gsk_..." spellcheck="false" />
-          <button class="toggle-btn" data-target="groqKey">SHOW</button>
-        </div>
-      </div>
+  <div class="field" id="groqKeyField">
+    <label id="groqKeyLabel">Groq API Key</label>
+    <div class="input-row">
+      <input type="text" id="groqKey" placeholder="gsk_..." spellcheck="false" />
+      <button class="toggle-btn" id="testGroqKeyBtn">CHECK</button>
+    </div>
+  </div>
 
-      <div class="field hidden" id="openaiKeyField">
-        <label>OpenAI API Key</label>
-        <div class="input-row">
-          <input type="password" id="openaiKey" placeholder="sk-..." spellcheck="false" />
-          <button class="toggle-btn" data-target="openaiKey">SHOW</button>
-        </div>
-      </div>
-    </section>
+  <div class="field hidden" id="openaiKeyField">
+    <label id="openaiKeyLabel">OpenAI API Key</label>
+    <div class="input-row">
+      <input type="text" id="openaiKey" placeholder="sk-..." spellcheck="false" />
+      <button class="toggle-btn" id="testOpenaiKeyBtn">CHECK</button>
+    </div>
+  </div>
+</section>
 
     <!-- ── LLM ── -->
     <section>
@@ -101,6 +101,9 @@
           <span class="slider"></span>
         </label>
       </div>
+      <span class="hint hidden" id="startupHint">
+        Works only in packaged build.
+      </span>
     </section>
 
   </div>

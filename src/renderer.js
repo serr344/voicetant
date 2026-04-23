@@ -4,6 +4,8 @@ const listenBtn   = document.querySelector('.listen-btn');
 const statusDot   = document.querySelector('.status-dot');
 const settingsBtn = document.querySelector('.settings-btn');
 
+let settingsWarningEl = null;
+
 let mediaRecorder = null;
 let audioChunks   = [];
 let stream        = null;
@@ -143,58 +145,64 @@ function trimConversationHistory() {
   conversationHistory = [systemMessage, ...trimmed];
 }
 
+function clearConversationHistory() {
+  conversationHistory = buildHistory();
+  console.log('[renderer] Conversation history cleared.');
+}
+
+function expandAbbreviationsForTts(text) {
+  return String(text || '')
+    .replace(/\bAPI\b/g, 'A P I')
+    .replace(/\bUI\b/g, 'U I')
+    .replace(/\bURL\b/g, 'U R L')
+    .replace(/\bLLM\b/g, 'L L M')
+    .replace(/\bTTS\b/g, 'T T S')
+    .replace(/\bSTT\b/g, 'S T T')
+    .replace(/\bCPU\b/g, 'C P U')
+    .replace(/\bGPU\b/g, 'G P U')
+    .replace(/\bRAM\b/g, 'R A M')
+    .replace(/\bHTML\b/g, 'H T M L')
+    .replace(/\bCSS\b/g, 'C S S')
+    .replace(/\bJS\b/g, 'J S')
+    .replace(/\bJSON\b/g, 'J S O N')
+    .replace(/\bSQL\b/g, 'S Q L')
+    .replace(/\bnpm\b/gi, 'N P M')
+    .replace(/\bVS Code\b/gi, 'V S Code');
+}
+
 function sanitizeTextForTts(text) {
   let cleaned = String(text || '');
 
-  // Code blocks
   cleaned = cleaned.replace(/```[\s\S]*?```/g, ' code snippet omitted ');
-
-  // Inline code
   cleaned = cleaned.replace(/`([^`]*)`/g, '$1');
 
-  // Markdown bold / italic / strikethrough
   cleaned = cleaned.replace(/\*\*(.*?)\*\*/g, '$1');
   cleaned = cleaned.replace(/\*(.*?)\*/g, '$1');
   cleaned = cleaned.replace(/__(.*?)__/g, '$1');
   cleaned = cleaned.replace(/_(.*?)_/g, '$1');
   cleaned = cleaned.replace(/~~(.*?)~~/g, '$1');
 
-  // Markdown headings / blockquotes
   cleaned = cleaned.replace(/^\s{0,3}#{1,6}\s*/gm, '');
   cleaned = cleaned.replace(/^\s{0,3}>\s?/gm, '');
 
-  // Markdown links [text](url) -> text
   cleaned = cleaned.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi, '$1');
-
-  // Raw URLs
   cleaned = cleaned.replace(/https?:\/\/\S+/gi, 'this link');
   cleaned = cleaned.replace(/www\.\S+/gi, 'this link');
 
-  // Emails
   cleaned = cleaned.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, 'this email address');
 
-  // Common technical wrappers
   cleaned = cleaned.replace(/[<>[\]{}]+/g, ' ');
-
-  // Long dashes
   cleaned = cleaned.replace(/[—–]+/g, ' - ');
-
-  // Pipes / slashes / backslashes
   cleaned = cleaned.replace(/\|/g, ', ');
   cleaned = cleaned.replace(/\\/g, ' ');
   cleaned = cleaned.replace(/\s\/\s/g, ' or ');
 
-  // Bullet points at line starts
   cleaned = cleaned.replace(/^\s*[-*•]+\s+/gm, '');
   cleaned = cleaned.replace(/^\s*\d+\.\s+/gm, '');
-
-  // Parenthetical content that is only a link marker or noisy metadata
   cleaned = cleaned.replace(/\((?:this link|https?:\/\/[^\)]*|www\.[^\)]*)\)/gi, '');
 
-  // Emoji / pictographic symbols
   cleaned = cleaned.replace(/[\p{Extended_Pictographic}]/gu, '');
 
-  // Repeated punctuation
   cleaned = cleaned.replace(/\.{4,}/g, '...');
   cleaned = cleaned.replace(/!{2,}/g, '!');
   cleaned = cleaned.replace(/\?{2,}/g, '?');
@@ -202,23 +210,16 @@ function sanitizeTextForTts(text) {
   cleaned = cleaned.replace(/;{2,}/g, ';');
   cleaned = cleaned.replace(/:{2,}/g, ':');
 
-  // Awkward punctuation spacing
   cleaned = cleaned.replace(/\s+([,.;:!?])/g, '$1');
   cleaned = cleaned.replace(/([,.;:!?])([^\s])/g, '$1 $2');
 
-  // Collapse repeated hyphens
   cleaned = cleaned.replace(/-{2,}/g, '-');
-
-  // Remove isolated symbols that sound bad in speech
   cleaned = cleaned.replace(/[@#$%^&*_+=~]+/g, ' ');
-
-  // Newlines -> spaces
   cleaned = cleaned.replace(/\s*\n+\s*/g, ' ');
-
-  // Multiple spaces
   cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
 
-  // Optional: shorten very long responses for TTS only
+  cleaned = expandAbbreviationsForTts(cleaned);
+
   const MAX_TTS_CHARS = 320;
   if (cleaned.length > MAX_TTS_CHARS) {
     const shortened = cleaned.slice(0, MAX_TTS_CHARS);
@@ -240,9 +241,85 @@ function sanitizeTextForTts(text) {
   return cleaned;
 }
 
-function clearConversationHistory() {
-  conversationHistory = buildHistory();
-  console.log('[renderer] Conversation history cleared.');
+function ensureSettingsWarningEl() {
+  if (settingsWarningEl) return settingsWarningEl;
+
+  settingsWarningEl = document.createElement('div');
+  settingsWarningEl.textContent = '';
+  settingsWarningEl.style.position = 'absolute';
+  settingsWarningEl.style.right = '14px';
+  settingsWarningEl.style.top = '50%';
+  settingsWarningEl.style.transform = 'translateY(-50%)';
+  settingsWarningEl.style.minWidth = '112px';
+  settingsWarningEl.style.height = '30px';
+  settingsWarningEl.style.padding = '0 12px';
+  settingsWarningEl.style.display = 'flex';
+  settingsWarningEl.style.alignItems = 'center';
+  settingsWarningEl.style.justifyContent = 'center';
+  settingsWarningEl.style.border = '1.5px solid #ff4d6d';
+  settingsWarningEl.style.background = 'rgba(32, 10, 16, 0.98)';
+  settingsWarningEl.style.color = '#ff4d6d';
+  settingsWarningEl.style.fontFamily = "'Press Start 2P', cursive";
+  settingsWarningEl.style.fontSize = '7px';
+  settingsWarningEl.style.letterSpacing = '0.4px';
+  settingsWarningEl.style.boxShadow = '0 0 6px rgba(255,77,109,0.22)';
+  settingsWarningEl.style.pointerEvents = 'none';
+  settingsWarningEl.style.opacity = '0';
+  settingsWarningEl.style.transition = 'opacity 0.15s ease';
+  settingsWarningEl.style.zIndex = '5';
+
+  const frame = document.querySelector('.frame');
+  frame.appendChild(settingsWarningEl);
+
+  return settingsWarningEl;
+}
+
+function showSettingsWarning(text) {
+  const el = ensureSettingsWarningEl();
+
+  el.textContent = text;
+  listenBtn.style.visibility = 'hidden';
+  el.style.opacity = '1';
+
+  clearTimeout(showSettingsWarning._timer);
+  showSettingsWarning._timer = setTimeout(() => {
+    el.style.opacity = '0';
+    listenBtn.style.visibility = 'visible';
+  }, 1800);
+}
+
+function isLikelyValidKeyFormat(service, key) {
+  const trimmed = String(key || '').trim();
+
+  if (!trimmed) return false;
+
+  if (service === 'groq') {
+    return trimmed.startsWith('gsk_');
+  }
+
+  if (service === 'openai') {
+    return trimmed.startsWith('sk-');
+  }
+
+  return false;
+}
+
+async function precheckBeforeSpeak() {
+  const s = await window.voicetant.getSettings();
+  const service = s?.apiService || 'groq';
+  const key = service === 'openai' ? s?.openaiKey : s?.groqKey;
+
+  if (!String(key || '').trim()) {
+    showSettingsWarning('NO KEY');
+    return { ok: false, reason: 'missing_api_key' };
+  }
+
+  if (!isLikelyValidKeyFormat(service, key)) {
+    showSettingsWarning('BAD KEY');
+    return { ok: false, reason: 'invalid_api_key' };
+  }
+
+  return { ok: true };
 }
 
 function updateRecordingButtonLabel() {
@@ -279,6 +356,8 @@ const STATE = {
     listenBtn.style.color       = 'var(--green)';
     listenBtn.style.boxShadow   = '0 0 4px rgba(68,255,154,0.12)';
     listenBtn.disabled          = false;
+    listenBtn.style.visibility  = 'visible';
+    if (settingsWarningEl) settingsWarningEl.style.opacity = '0';
   },
   recording: () => {
     listenBtn.disabled = false;
@@ -539,7 +618,7 @@ listenBtn.addEventListener('mouseleave', () => {
   updateRecordingButtonLabel();
 });
 
-listenBtn.addEventListener('click', () => {
+listenBtn.addEventListener('click', async () => {
   if (isSpeaking) {
     stopSpeaking();
     return;
@@ -547,6 +626,11 @@ listenBtn.addEventListener('click', () => {
 
   if (isRecording) {
     stopRecording();
+    return;
+  }
+
+  const precheck = await precheckBeforeSpeak();
+  if (!precheck.ok) {
     return;
   }
 

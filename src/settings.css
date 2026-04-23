@@ -144,3 +144,28 @@ input[type="range"]::-webkit-slider-thumb {
 .btn-primary:hover { box-shadow: 0 0 10px rgba(68,255,154,0.25); }
 .btn-secondary { background: transparent; border-color: var(--muted); color: var(--muted); }
 .btn-secondary:hover { border-color: var(--white); color: var(--white); }
+
+.key-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.inline-test-status {
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+}
+
+.inline-test-status.success {
+  color: var(--green);
+}
+
+.inline-test-status.error {
+  color: var(--danger);
+}
+
+.inline-test-status.pending {
+  color: var(--cyan);
+}

@@ -119,6 +119,34 @@ function classifyRuntimeError(err) {
   return 'unknown_error';
 }
 
+// ── Startup helper ───────────────────────────────────────────────
+function applyLaunchAtStartup(enabled) {
+  try {
+    if (!app.isPackaged) {
+      console.log('[main] Launch at startup skipped: app is not packaged.');
+      return { ok: false, reason: 'not_packaged' };
+    }
+
+    app.setLoginItemSettings({
+      openAtLogin: enabled,
+      path: process.execPath,
+    });
+
+    const current = app.getLoginItemSettings();
+
+    console.log('[main] Launch at startup updated:', {
+      requested: enabled,
+      actual: current.openAtLogin,
+      execPath: process.execPath,
+    });
+
+    return { ok: true, enabled: current.openAtLogin };
+  } catch (err) {
+    console.error('[main] Failed to apply launch at startup:', err.message);
+    return { ok: false, reason: 'failed' };
+  }
+}
+
 // ── Audio helpers ────────────────────────────────────────────────
 function getExtensionFromMimeType(mimeType = '') {
   const clean = String(mimeType).split(';')[0].trim().toLowerCase();
@@ -256,9 +284,7 @@ ipcMain.handle('save-settings', (_e, newSettings) => {
   settings = { ...DEFAULT_SETTINGS, ...newSettings };
   saveSettingsToDisk(settings);
 
-  if (app.isPackaged) {
-    app.setLoginItemSettings({ openAtLogin: settings.launchAtStartup });
-  }
+  const startupResult = applyLaunchAtStartup(settings.launchAtStartup);
 
   if (mainWindow) {
     mainWindow.webContents.send('settings-updated', settings);
@@ -271,7 +297,7 @@ ipcMain.handle('save-settings', (_e, newSettings) => {
     settings.llmModel
   );
 
-  return { ok: true };
+  return { ok: true, startupResult };
 });
 
 ipcMain.handle('open-settings', () => openSettingsWindow());
@@ -287,6 +313,68 @@ ipcMain.handle('clear-conversation', () => {
 
   console.log('[main] Conversation cleared.');
   return { ok: true };
+});
+
+ipcMain.handle('get-app-environment', () => {
+  return {
+    isPackaged: app.isPackaged,
+  };
+});
+
+ipcMain.handle('test-api-key', async (_e, payload) => {
+  const service = payload?.apiService || settings.apiService;
+  const model = payload?.llmModel || settings.llmModel;
+
+  const apiKey =
+    service === 'openai'
+      ? (payload?.openaiKey || '').trim()
+      : (payload?.groqKey || '').trim();
+
+  if (!apiKey) {
+    return { ok: false, error: 'missing_api_key' };
+  }
+
+  const baseUrl =
+    service === 'openai'
+      ? 'https://api.openai.com/v1'
+      : 'https://api.groq.com/openai/v1';
+
+  try {
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: 'Reply with exactly: OK' },
+          { role: 'user', content: 'OK' },
+        ],
+        max_tokens: 5,
+        temperature: 0,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      const errorCode = classifyApiError(res.status, errText, 'llm');
+
+      console.error('[main] API key test failed:', res.status, errText);
+      return { ok: false, error: errorCode };
+    }
+
+    const data = await res.json();
+    const reply = data.choices?.[0]?.message?.content?.trim() ?? '';
+
+    console.log('[main] API key test success:', service, model, '| reply:', reply);
+    return { ok: true };
+  } catch (err) {
+    const errorCode = classifyRuntimeError(err);
+    console.error('[main] API key test runtime error:', err.message);
+    return { ok: false, error: errorCode };
+  }
 });
 
 // ── IPC: Save audio ──────────────────────────────────────────────
@@ -447,7 +535,7 @@ ipcMain.handle('tts-speak', async (_e, text) => {
   killTts();
 
   const rate = settings.ttsRate ?? 1.0;
-  const sapiRate = Math.round((rate - 1.0) * 10); // -5 to +10
+  const sapiRate = Math.round((rate - 1.0) * 10);
   const safe = String(text || '').replace(/'/g, "''");
 
   const script = [
@@ -493,6 +581,7 @@ ipcMain.handle('tts-stop', async () => {
 // ── App lifecycle ────────────────────────────────────────────────
 app.whenReady().then(() => {
   createMainWindow();
+  applyLaunchAtStartup(settings.launchAtStartup);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
