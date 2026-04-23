@@ -41,6 +41,7 @@ const launchEl        = document.getElementById('launchAtStartup');
 const saveBtn         = document.getElementById('saveBtn');
 const cancelBtn       = document.getElementById('cancelBtn');
 const closeBtn        = document.getElementById('closeBtn');
+const clearConversationBtn = document.getElementById('clearConversationBtn');
 
 // ── Service toggle ───────────────────────────────────────────────
 function applyService(service) {
@@ -125,5 +126,10 @@ document.querySelectorAll('.toggle-btn').forEach(btn => {
 saveBtn.addEventListener('click', saveSettings);
 cancelBtn.addEventListener('click', () => window.voicetant.closeSettings());
 closeBtn.addEventListener('click', () => window.voicetant.closeSettings());
+
+clearConversationBtn.addEventListener('click', async () => {
+  await window.voicetant.clearConversation();
+  window.voicetant.closeSettings();
+});
 
 loadSettings();

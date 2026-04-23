@@ -10,6 +10,7 @@
   --cyan: #1ec8ff;
   --green: #44ff9a;
   --white: #f3f5fb;
+  --orange: #ffb347;
 }
 
 html, body {
@@ -73,6 +74,10 @@ body { font-family: Arial, sans-serif; }
   border-radius: 50%;
   background: var(--green);
   box-shadow: 0 0 4px rgba(68, 255, 154, 0.22);
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s ease;
 }
 
 .brand {
@@ -86,9 +91,9 @@ body { font-family: Arial, sans-serif; }
 .listen-btn {
   -webkit-app-region: no-drag;
   cursor: pointer;
-  min-width: 70px;
-  height: 24px;
-  padding: 0 10px;
+  min-width: 112px;
+  height: 30px;
+  padding: 0 12px;
   border: 1.5px solid var(--green);
   border-radius: 0;
   background: rgba(7, 20, 16, 0.98);
@@ -97,17 +102,32 @@ body { font-family: Arial, sans-serif; }
   font-size: 7px;
   letter-spacing: 0.4px;
   box-shadow: 0 0 4px rgba(68, 255, 154, 0.12);
-  transition: transform 0.12s ease, box-shadow 0.15s ease;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    background 0.2s ease;
 }
 
-.listen-btn:hover  { box-shadow: 0 0 8px rgba(68, 255, 154, 0.22); }
-.listen-btn:active { transform: scale(0.98); }
+.listen-btn:hover {
+  box-shadow: 0 0 8px rgba(68, 255, 154, 0.22);
+}
+
+.listen-btn:active {
+  transform: scale(0.98);
+}
+
+.listen-btn:disabled {
+  cursor: default;
+  opacity: 1;
+}
 
 .settings-btn {
   -webkit-app-region: no-drag;
   cursor: pointer;
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -116,7 +136,11 @@ body { font-family: Arial, sans-serif; }
   background: transparent;
   color: rgba(139, 77, 255, 0.6);
   font-size: 13px;
-  transition: color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.12s ease;
 }
 
 .settings-btn:hover {
@@ -125,7 +149,9 @@ body { font-family: Arial, sans-serif; }
   box-shadow: 0 0 6px rgba(139, 77, 255, 0.2);
 }
 
-.settings-btn:active { transform: scale(0.95); }
+.settings-btn:active {
+  transform: scale(0.95);
+}
 
 .left-side, .right-side, .logo-image,
 .status-dot, .brand, .listen-btn, .settings-btn {
